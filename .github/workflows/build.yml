@@ -17,8 +17,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu runner 自带 Android SDK，直接用，不再跑 setup-android
+      - name: Configure Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "SDK dir: $ANDROID_SDK_ROOT"
+          ls "$ANDROID_SDK_ROOT" || true
+          # 确保 platform 34 和 build-tools 存在
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" 2>&1 | tail -3 || true
 
       - name: Install Gradle 8.7
         run: |
@@ -36,23 +44,19 @@ jobs:
             -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Build release APK
-        run: gradle :app:assembleRelease --no-daemon --stacktrace
+        run: gradle :app:assembleRelease --no-daemon --stacktrace 2>&1 | tail -80
 
       - name: Rename APK
+        if: success()
         run: |
           mkdir -p output
           cp app/build/outputs/apk/release/app-release.apk output/FarDriver-Android-OK.apk
           ls -la output/
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: FarDriver-Android-OK
           path: output/*.apk
           retention-days: 30
-
-      - name: Upload error hint on failure
-        if: failure()
-        run: |
-          mkdir -p output
-          echo "build failed - check logs" > output/FarDriver-Android-FAILED.txt
