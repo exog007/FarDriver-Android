@@ -38,17 +38,16 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
-      # 输出写到文件，失败时再 cat，避免日志截断
       - name: Build release APK
         run: |
           set +e
-          gradle :app:assembleRelease --no-daemon --stacktrace > /tmp/build.log 2>&1
+          gradle :app:assembleRelease --no-daemon --stacktrace --console=plain > /tmp/build.log 2>&1
           RC=$?
-          echo "gradle exit=$RC"
-          # 只打印错误相关行 + 最后 100 行
-          grep -E "^e: |^w: .*error|error: |FAILURE:|What went wrong|Caused by:" /tmp/build.log | head -60
-          echo "===== TAIL ====="
-          tail -60 /tmp/build.log
+          echo "===== gradle exit=$RC ====="
+          # 打印所有 kotlin 错误（各种可能的格式）
+          grep -n -i -E "\.kt:[0-9]+|kotlin|compilation error|unresolved|type mismatch|none of the following|too many arguments|no value passed" /tmp/build.log | head -100
+          echo "===== FULL TAIL 40 ====="
+          tail -40 /tmp/build.log
           exit $RC
 
       - name: Rename APK
@@ -56,7 +55,6 @@ jobs:
         run: |
           mkdir -p output
           cp app/build/outputs/apk/release/app-release.apk output/FarDriver-Android-OK.apk
-          ls -la output/
 
       - name: Upload APK
         if: success()
