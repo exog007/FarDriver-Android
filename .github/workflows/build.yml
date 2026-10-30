@@ -17,15 +17,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ubuntu runner 自带 Android SDK，直接用，不再跑 setup-android
       - name: Configure Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "SDK dir: $ANDROID_SDK_ROOT"
-          ls "$ANDROID_SDK_ROOT" || true
-          # 确保 platform 34 和 build-tools 存在
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" 2>&1 | tail -3 || true
 
       - name: Install Gradle 8.7
@@ -43,8 +38,18 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      # 输出写到文件，失败时再 cat，避免日志截断
       - name: Build release APK
-        run: gradle :app:assembleRelease --no-daemon --stacktrace 2>&1 | tail -80
+        run: |
+          set +e
+          gradle :app:assembleRelease --no-daemon --stacktrace > /tmp/build.log 2>&1
+          RC=$?
+          echo "gradle exit=$RC"
+          # 只打印错误相关行 + 最后 100 行
+          grep -E "^e: |^w: .*error|error: |FAILURE:|What went wrong|Caused by:" /tmp/build.log | head -60
+          echo "===== TAIL ====="
+          tail -60 /tmp/build.log
+          exit $RC
 
       - name: Rename APK
         if: success()
