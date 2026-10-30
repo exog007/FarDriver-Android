@@ -103,6 +103,7 @@ private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
     val battFull by settings.battFull.collectAsStateWithLifecycle()
     val battEmpty by settings.battEmpty.collectAsStateWithLifecycle()
     val trim by settings.speedTrim.collectAsStateWithLifecycle()
+    val brightness by settings.textBrightness.collectAsStateWithLifecycle()
 
     // 每秒 tick 触发重组（里程/电耗是可变对象）
     var tick by remember { mutableIntStateOf(0) }
@@ -112,6 +113,17 @@ private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
 
     val bikeConnected = ctrlState == BleManager.State.CONNECTED
     val bmsConnected = bmsState == BleManager.State.CONNECTED
+
+    // ── 竞技模式锁横屏，标准模式自由旋转 ──
+    val activity = LocalContext.current as? android.app.Activity
+    LaunchedEffect(sportMode, screen) {
+        val target = if (screen == Screen.DASHBOARD && sportMode) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        }
+        activity?.requestedOrientation = target
+    }
 
     when (screen) {
         Screen.BMS -> BmsScreen(
@@ -148,7 +160,8 @@ private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
                         battEmpty = battEmpty,
                         bikeConnected = bikeConnected,
                         bmsConnected = bmsConnected,
-                        tickKey = tick
+                        tickKey = tick,
+                        brightness = brightness
                     )
                 } else {
                     StandardDashboard(
