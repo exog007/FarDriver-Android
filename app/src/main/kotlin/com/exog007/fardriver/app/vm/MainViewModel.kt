@@ -6,7 +6,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import com.exog007.fardriver.app.ble.BleManager
 import com.exog007.fardriver.protocol.AntBmsBle
 import com.exog007.fardriver.protocol.AntBmsData
@@ -18,7 +17,6 @@ import com.exog007.fardriver.protocol.GpsFusion
 import com.exog007.fardriver.protocol.TripMeter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 
 /**
  * 主 ViewModel：管理控制器 + BMS 两路 BLE 连接和数据
@@ -26,6 +24,25 @@ import kotlinx.coroutines.launch
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = app.getSharedPreferences("fardriver", Context.MODE_PRIVATE)
+
+    // ── 状态（先声明，供下面的闭包使用）──
+
+    private val _ctrlData = MutableStateFlow(ControllerData())
+    val ctrlData: StateFlow<ControllerData> = _ctrlData
+
+    private val _bmsData = MutableStateFlow(AntBmsData())
+    val bmsData: StateFlow<AntBmsData> = _bmsData
+
+    private val _displaySpeed = MutableStateFlow(0.0)
+    val displaySpeed: StateFlow<Double> = _displaySpeed
+
+    private val _gpsSpeed = MutableStateFlow(0.0)
+    val gpsSpeed: StateFlow<Double> = _gpsSpeed
+
+    // ── 里程 / 速度融合 ──
+
+    val trip = TripMeter()
+    val fused = GpsFusion()
 
     // ── 控制器 ──
 
@@ -43,9 +60,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         savedName = { prefs.getString("ctrl_name", null) }
         onData = { bytes ->
             if (ctrlDecoder.process(bytes)) {
-                _ctrlData.value = ctrlDecoder.data.copy()
-                trip.update(ctrlDecoder.data.speedKmh, ctrlDecoder.data.power)
-                updateSpeed()
+                val d = ctrlDecoder.data
+                _ctrlData.value = d.copy()
+                trip.update(d.speedKmh, d.power)
             }
         }
         onDisconnected = {
@@ -53,9 +70,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             fused.reset()
         }
     }
-
-    private val _ctrlData = MutableStateFlow(ControllerData())
-    val ctrlData: StateFlow<ControllerData> = _ctrlData
 
     // ── BMS ──
 
@@ -85,34 +99,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private val _bmsData = MutableStateFlow(AntBmsData())
-    val bmsData: StateFlow<AntBmsData> = _bmsData
-
-    // ── 里程 / 速度融合 ──
-
-    val trip = TripMeter().apply {
-        restore(
-            prefs.getFloat("trip_dist", 0f).toDouble(),
-            prefs.getFloat("trip_energy", 0f).toDouble(),
-            prefs.getFloat("trip_sec", 0f).toDouble()
-        )
-        onNeedSave = {
-            prefs.edit()
-                .putFloat("trip_dist", distanceKm.toFloat())
-                .putFloat("trip_energy", energyKWh.toFloat())
-                .putFloat("trip_sec", movingSeconds.toFloat())
-                .apply()
-        }
-    }
-
-    val fused = GpsFusion()
-
-    private val _displaySpeed = MutableStateFlow(0.0)
-    val displaySpeed: StateFlow<Double> = _displaySpeed
-
-    private val _gpsSpeed = MutableStateFlow(0.0)
-    val gpsSpeed: StateFlow<Double> = _gpsSpeed
-
     // ── 定时器 ──
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -120,6 +106,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var smoothRunnable: Runnable? = null
 
     init {
+        // 恢复里程数据
+        trip.restore(
+            prefs.getFloat("trip_dist", 0f).toDouble(),
+            prefs.getFloat("trip_energy", 0f).toDouble(),
+            prefs.getFloat("trip_sec", 0f).toDouble()
+        )
+        trip.onNeedSave = {
+            prefs.edit()
+                .putFloat("trip_dist", trip.distanceKm.toFloat())
+                .putFloat("trip_energy", trip.energyKWh.toFloat())
+                .putFloat("trip_sec", trip.movingSeconds.toFloat())
+                .apply()
+        }
         startSmoothLoop()
     }
 
@@ -134,10 +133,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         smoothRunnable = r
         mainHandler.post(r)
-    }
-
-    private fun updateSpeed() {
-        // 由平滑循环持续更新，这里不用做
     }
 
     /** GPS 回调 */

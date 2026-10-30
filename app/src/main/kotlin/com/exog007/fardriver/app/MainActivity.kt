@@ -12,21 +12,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.exog007.fardriver.app.ble.BleManager
 import com.exog007.fardriver.app.gps.GpsSpeedProvider
 import com.exog007.fardriver.app.ui.SportDashboard
 import com.exog007.fardriver.app.vm.MainViewModel
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
     private val vm: MainViewModel by viewModels()
     private lateinit var gps: GpsSpeedProvider
 
-    /** 权限申请 */
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        val allGranted = results.values.all { it }
-        if (allGranted || results[Manifest.permission.BLUETOOTH_SCAN] == true) {
+        if (results[Manifest.permission.BLUETOOTH_SCAN] == true) {
             vm.startControllerScan()
             gps.start()
         }
@@ -47,12 +47,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(color = Color.Black) {
-                    DashboardScreen()
+                    AppRoot(vm)
                 }
             }
         }
 
-        // 申请权限
         permLauncher.launch(
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
@@ -66,50 +65,48 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         gps.start()
-        // 没连上就继续扫
         vm.startControllerScan()
-    }
-
-    override fun onPause() {
-        super.onPause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         gps.stop()
     }
+}
 
-    @Composable
-    private fun DashboardScreen() {
-        val ctrl by vm.ctrlData.collectAsStateWithLifecycle()
-        val bms by vm.bmsData.collectAsStateWithLifecycle()
-        val speed by vm.displaySpeed.collectAsStateWithLifecycle()
-        val ctrlState by vm.controllerBle.state.collectAsStateWithLifecycle()
-        val bmsState by vm.bmsBle.state.collectAsStateWithLifecycle()
+/**
+ * 顶层 Composable，避免在 Activity 里写 @Composable 方法带来的作用域问题
+ */
+@Composable
+private fun AppRoot(vm: MainViewModel) {
+    val ctrl by vm.ctrlData.collectAsStateWithLifecycle()
+    val bms by vm.bmsData.collectAsStateWithLifecycle()
+    val speed by vm.displaySpeed.collectAsStateWithLifecycle()
+    val ctrlState by vm.controllerBle.state.collectAsStateWithLifecycle()
+    val bmsState by vm.bmsBle.state.collectAsStateWithLifecycle()
 
-        // 里程和电耗每秒刷新一次（它们内部是可变对象，需要主动触发重组）
-        var tick by remember { mutableIntStateOf(0) }
-        LaunchedEffect(Unit) {
-            while (true) {
-                kotlinx.coroutines.delay(1000)
-                tick++
-            }
+    // 里程/电耗是可变对象，每秒 tick 一次触发重组
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            tick++
         }
-        val _unused = tick
-
-        SportDashboard(
-            ctrl = ctrl,
-            bms = bms,
-            displaySpeed = speed,
-            tripDistance = vm.trip.distanceText,
-            tripConsumption = vm.trip.consumptionText,
-            tripAvgPower = vm.trip.avgPowerText,
-            rpmMultiplier = 10.0,
-            rpmScaleMax = 12000.0,
-            battFull = 90.3,
-            battEmpty = 63.0,
-            bikeConnected = ctrlState == com.exog007.fardriver.app.ble.BleManager.State.CONNECTED,
-            bmsConnected = bmsState == com.exog007.fardriver.app.ble.BleManager.State.CONNECTED
-        )
     }
+
+    SportDashboard(
+        ctrl = ctrl,
+        bms = bms,
+        displaySpeed = speed,
+        tripDistance = vm.trip.distanceText,
+        tripConsumption = vm.trip.consumptionText,
+        tripAvgPower = vm.trip.avgPowerText,
+        rpmMultiplier = 10.0,
+        rpmScaleMax = 12000.0,
+        battFull = 90.3,
+        battEmpty = 63.0,
+        bikeConnected = ctrlState == BleManager.State.CONNECTED,
+        bmsConnected = bmsState == BleManager.State.CONNECTED,
+        tickKey = tick
+    )
 }

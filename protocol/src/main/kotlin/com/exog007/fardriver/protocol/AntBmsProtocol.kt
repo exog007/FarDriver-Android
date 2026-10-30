@@ -309,7 +309,7 @@ class AntBmsDecoder(var config: AntBmsConfig = AntBmsConfig.EMPTY) {
         // ── ⑧ 均衡 ──
         if (base + 35 < d.size) {
             val mask = readU32(d, base + 32)
-            out.balancingActive = mask != 0u
+            out.balancingActive = mask != 0L
         }
 
         // ── ⑨ 单体极值 ──

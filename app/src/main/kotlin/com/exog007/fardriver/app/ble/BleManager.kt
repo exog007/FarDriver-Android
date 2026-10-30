@@ -61,9 +61,14 @@ class BleManager(
 
     private var gatt: BluetoothGatt? = null
     private var writeChar: BluetoothGattCharacteristic? = null
+    /** 由外部提供上次保存的名字，用于名称匹配 */
+    var savedName: () -> String? = { null }
+
     private var scanning = false
     /** 用户手动停止后不再自动重连 */
     private var userStopped = false
+    /** 本次扫描是否启用自动连接 */
+    private var scanAutoConnect = true
 
     // ── 权限检查 ──
 
@@ -108,8 +113,6 @@ class BleManager(
         scanAutoConnect = autoConnect
     }
 
-    private var scanAutoConnect = true
-
     @SuppressLint("MissingPermission")
     fun stopScan() {
         if (!scanning) return
@@ -128,9 +131,11 @@ class BleManager(
 
             // ── 记忆设备判断放最前面（必须在去重之前）──
             val savedId = savedDeviceId()
-            val savedName = savedName()
+            val savedNameVal = savedName()
             val idMatch = savedId != null && savedId == id
-            val nameMatch = !savedName.isNullOrEmpty() && savedName == name && name != "未知设备"
+            val nameMatch = !savedNameVal.isNullOrEmpty() &&
+                            savedNameVal == name &&
+                            name != "未知设备"
 
             if (scanAutoConnect && gatt == null && (idMatch || nameMatch)) {
                 // 找到了，停扫并连
@@ -153,9 +158,6 @@ class BleManager(
             _state.value = State.IDLE
         }
     }
-
-    /** 由外部提供上次保存的名字，用于名称匹配 */
-    var savedName: () -> String? = { null }
 
     // ── 连接 ──
 
