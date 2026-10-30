@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.exog007.fardriver.app.settings.brightnessScaled
 import com.exog007.fardriver.protocol.AntBmsData
 import com.exog007.fardriver.protocol.BatteryPercent
 import com.exog007.fardriver.protocol.ControllerData
