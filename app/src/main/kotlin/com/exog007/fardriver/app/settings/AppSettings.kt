@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class AppSettings(context: Context) {
 
+    private val ctx: Context = context.applicationContext
     private val sp = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
     // ── 仪表风格 ──
@@ -118,6 +119,46 @@ class AppSettings(context: Context) {
         val c = v.coerceIn(0.5, 1.6)
         _textBrightness.value = c
         sp.edit().putFloat("text_brightness", c.toFloat()).apply()
+    }
+
+    // ── 背景类型：solid / photo ──
+
+    private val _bgType = MutableStateFlow(sp.getString("bg_type", "solid") ?: "solid")
+    val bgType: StateFlow<String> = _bgType
+
+    /** 背景图片（改了这个就重画） */
+    private val _bgBitmap = MutableStateFlow<android.graphics.Bitmap?>(null)
+    val bgBitmap: StateFlow<android.graphics.Bitmap?> = _bgBitmap
+
+    init {
+        _bgBitmap.value = BackgroundImageStore.load(ctx)
+    }
+
+    fun setBgType(type: String) {
+        _bgType.value = type
+        sp.edit().putString("bg_type", type).apply()
+    }
+
+    fun setBackgroundPhoto(bitmap: android.graphics.Bitmap) {
+        if (BackgroundImageStore.save(ctx, bitmap)) {
+            _bgBitmap.value = BackgroundImageStore.load(ctx)
+            setBgType("photo")
+        }
+    }
+
+    fun clearBackgroundPhoto() {
+        BackgroundImageStore.delete(ctx)
+        _bgBitmap.value = null
+        setBgType("solid")
+    }
+
+    /** 图片遮罩暗度（0~0.85，让数字看得清） */
+    private val _photoDim = MutableStateFlow(sp.getFloat("photo_dim", 0.35f).toDouble())
+    val photoDim: StateFlow<Double> = _photoDim
+    fun setPhotoDim(v: Double) {
+        val c = v.coerceIn(0.0, 0.85)
+        _photoDim.value = c
+        sp.edit().putFloat("photo_dim", c.toFloat()).apply()
     }
 }
 

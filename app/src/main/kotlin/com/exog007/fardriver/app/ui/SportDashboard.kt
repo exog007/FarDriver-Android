@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +55,12 @@ fun SportDashboard(
     bikeConnected: Boolean,
     bmsConnected: Boolean,
     tickKey: Int = 0,
-    brightness: Double = 1.0
+    brightness: Double = 1.0,
+    amberColor: Color = SportColors.Amber,
+    cyanColor: Color = SportColors.Cyan,
+    bgColor: Color = SportColors.Background,
+    bgBitmap: android.graphics.Bitmap? = null,
+    photoDim: Double = 0.35
 ) {
     val sz = rememberAdaptiveSize()
 
@@ -77,44 +83,62 @@ fun SportDashboard(
 
     val inSelfTest = !bikeConnected || bootAnimating
 
-    val amber = SportColors.Amber.brightnessScaled(brightness)
-    val cyan = SportColors.Cyan.brightnessScaled(brightness)
+    val amber = amberColor.brightnessScaled(brightness)
+    val cyan = cyanColor.brightnessScaled(brightness)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SportColors.Background)
-            .padding(sz.pad),
-        verticalArrangement = Arrangement.spacedBy(sz.pad * 0.6f)
-    ) {
-        TopBar(sz, ctrl, inSelfTest, bikeConnected, amber, cyan)
-
-        RpmBand(
-            sz = sz,
-            rpm = if (bootAnimating) rpmScaleMax * bootProgress else ctrl.rpm * rpmMultiplier,
-            scaleMax = rpmScaleMax,
-            amber = amber
-        )
-
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            MiddleRow(
-                sz = sz,
-                ctrl = ctrl,
-                bms = bms,
-                displaySpeed = if (bootAnimating) 299.0 * bootProgress else displaySpeed,
-                tripDistance = tripDistance,
-                tripConsumption = tripConsumption,
-                battFull = battFull,
-                battEmpty = battEmpty,
-                bikeConnected = bikeConnected,
-                bmsConnected = bmsConnected,
-                inSelfTest = inSelfTest,
-                amber = amber,
-                cyan = cyan
+    Box(modifier = Modifier.fillMaxSize()) {
+        // ── 背景 ──
+        if (bgBitmap != null) {
+            androidx.compose.foundation.Image(
+                bitmap = bgBitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
             )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = photoDim.toFloat()))
+            )
+        } else {
+            Box(Modifier.fillMaxSize().background(bgColor))
         }
 
-        BottomRow(sz, ctrl, tripAvgPower, amber, cyan)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(sz.pad),
+            verticalArrangement = Arrangement.spacedBy(sz.pad * 0.6f)
+        ) {
+            TopBar(sz, ctrl, inSelfTest, bikeConnected, amber, cyan)
+
+            RpmBand(
+                sz = sz,
+                rpm = if (bootAnimating) rpmScaleMax * bootProgress else ctrl.rpm * rpmMultiplier,
+                scaleMax = rpmScaleMax,
+                amber = amber
+            )
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                MiddleRow(
+                    sz = sz,
+                    ctrl = ctrl,
+                    bms = bms,
+                    displaySpeed = if (bootAnimating) 299.0 * bootProgress else displaySpeed,
+                    tripDistance = tripDistance,
+                    tripConsumption = tripConsumption,
+                    battFull = battFull,
+                    battEmpty = battEmpty,
+                    bikeConnected = bikeConnected,
+                    bmsConnected = bmsConnected,
+                    inSelfTest = inSelfTest,
+                    amber = amber,
+                    cyan = cyan
+                )
+            }
+
+            BottomRow(sz, ctrl, tripAvgPower, amber, cyan)
+        }
     }
 }
 

@@ -1,10 +1,13 @@
 package com.exog007.fardriver.app
 
 import android.Manifest
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -37,6 +40,9 @@ class MainActivity : ComponentActivity() {
     lateinit var settings: AppSettings
         private set
 
+    /** 相册选图回调（由 Compose 里赋值） */
+    private var photoPicked: ((Uri) -> Unit)? = null
+
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
@@ -46,6 +52,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val pickPhoto = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) photoPicked?.invoke(uri)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -53,14 +65,23 @@ class MainActivity : ComponentActivity() {
         settings = AppSettings(this)
 
         gps = GpsSpeedProvider(this).apply {
-            onUpdate = { kmh, acc, fix ->
-                runOnUiThread { vm.onGpsUpdate(kmh, acc, fix) }
-            }
+            onUpdate = { kmh, acc, fix -> runOnUiThread { vm.onGpsUpdate(kmh, acc, fix) } }
         }
 
         setContent {
             MaterialTheme {
-                Surface(color = Color.Black) { AppRoot(vm, settings) }
+                Surface(color = Color.Black) {
+                    AppRoot(
+                        vm = vm,
+                        settings = settings,
+                        onPickPhoto = {
+                            pickPhoto.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        registerPhotoCallback = { cb -> photoPicked = cb }
+                    )
+                }
             }
         }
 
@@ -86,11 +107,29 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { DASHBOARD, BMS, SETTINGS }
+private enum class Screen { DASHBOARD, BMS, SETTINGS, BLUETOOTH }
 
 @Composable
-private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
+private fun AppRoot(
+    vm: MainViewModel,
+    settings: AppSettings,
+    onPickPhoto: () -> Unit,
+    registerPhotoCallback: (((Uri) -> Unit)) -> Unit
+) {
+    val ctx = LocalContext.current
     var screen by remember { mutableStateOf(Screen.DASHBOARD) }
+
+    // 处理选中的图片
+    LaunchedEffect(Unit) {
+        registerPhotoCallback { uri ->
+            try {
+                val input = ctx.contentResolver.openInputStream(uri)
+                val bmp = BitmapFactory.decodeStream(input)
+                input?.close()
+                if (bmp != null) settings.setBackgroundPhoto(bmp)
+            } catch (_: Exception) { }
+        }
+    }
 
     val ctrl by vm.ctrlData.collectAsStateWithLifecycle()
     val bms by vm.bmsData.collectAsStateWithLifecycle()
@@ -104,8 +143,13 @@ private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
     val battEmpty by settings.battEmpty.collectAsStateWithLifecycle()
     val trim by settings.speedTrim.collectAsStateWithLifecycle()
     val brightness by settings.textBrightness.collectAsStateWithLifecycle()
+    val amberHex by settings.amberHex.collectAsStateWithLifecycle()
+    val cyanHex by settings.cyanHex.collectAsStateWithLifecycle()
+    val bgHex by settings.bgHex.collectAsStateWithLifecycle()
+    val bgBmp by settings.bgBitmap.collectAsStateWithLifecycle()
+    val photoDim by settings.photoDim.collectAsStateWithLifecycle()
+    val bgType by settings.bgType.collectAsStateWithLifecycle()
 
-    // 每秒 tick 触发重组（里程/电耗是可变对象）
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) { delay(1000); tick++ }
@@ -114,15 +158,14 @@ private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
     val bikeConnected = ctrlState == BleManager.State.CONNECTED
     val bmsConnected = bmsState == BleManager.State.CONNECTED
 
-    // ── 竞技模式锁横屏，标准模式自由旋转 ──
-    val activity = LocalContext.current as? android.app.Activity
+    // 竞技仪表锁横屏，其它页面自由旋转
+    val activity = ctx as? android.app.Activity
     LaunchedEffect(sportMode, screen) {
-        val target = if (screen == Screen.DASHBOARD && sportMode) {
-            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else {
-            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
-        }
-        activity?.requestedOrientation = target
+        activity?.requestedOrientation =
+            if (screen == Screen.DASHBOARD && sportMode)
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
     }
 
     when (screen) {
@@ -138,14 +181,34 @@ private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
         Screen.SETTINGS -> SettingsScreen(
             settings = settings,
             onBack = { screen = Screen.DASHBOARD },
+            onOpenBluetooth = { screen = Screen.BLUETOOTH },
+            onPickPhoto = onPickPhoto,
             onResetTrip = { vm.resetTrip() },
             tripDistance = vm.trip.distanceText,
             tripConsumption = vm.trip.consumptionText,
             tripAvgPower = vm.trip.avgPowerText
         )
 
+        Screen.BLUETOOTH -> BluetoothScreen(
+            controllerBle = vm.controllerBle,
+            bmsBle = vm.bmsBle,
+            savedControllerId = vm.savedControllerId,
+            savedControllerName = vm.savedControllerName,
+            savedBmsId = vm.savedBmsId,
+            savedBmsName = vm.savedBmsName,
+            onBack = { screen = Screen.SETTINGS },
+            onScanController = { vm.startControllerScan() },
+            onScanBms = { vm.startBmsScan() },
+            onConnectController = { vm.connectControllerDevice(it) },
+            onConnectBms = { vm.connectBmsDevice(it) },
+            onDisconnectController = { vm.disconnectController() },
+            onDisconnectBms = { vm.disconnectBms() },
+            onForgetController = { vm.forgetController() },
+            onForgetBms = { vm.forgetBms() }
+        )
+
         Screen.DASHBOARD -> {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
                 if (sportMode) {
                     SportDashboard(
                         ctrl = ctrl,
@@ -161,7 +224,12 @@ private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
                         bikeConnected = bikeConnected,
                         bmsConnected = bmsConnected,
                         tickKey = tick,
-                        brightness = brightness
+                        brightness = brightness,
+                        amberColor = Color(amberHex),
+                        cyanColor = Color(cyanHex),
+                        bgColor = Color(bgHex),
+                        bgBitmap = if (bgType == "photo") bgBmp else null,
+                        photoDim = photoDim
                     )
                 } else {
                     StandardDashboard(
@@ -174,11 +242,9 @@ private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
                     )
                 }
 
-                // 右上角浮层按钮：BMS / 设置 / 风格切换
+                // 右上角浮层
                 Row(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 4.dp, end = 8.dp),
+                    Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     FloatBtn(if (sportMode) "标准" else "竞技") {
@@ -195,7 +261,7 @@ private fun AppRoot(vm: MainViewModel, settings: AppSettings) {
 @Composable
 private fun FloatBtn(text: String, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
+        Modifier
             .background(Color(0x40FFFFFF), RoundedCornerShape(6.dp))
             .clickable { onClick() }
             .padding(horizontal = 10.dp, vertical = 5.dp)

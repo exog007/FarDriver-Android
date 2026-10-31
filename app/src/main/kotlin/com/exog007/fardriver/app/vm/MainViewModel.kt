@@ -99,6 +99,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ── 记忆设备（供蓝牙页面显示）──
+
+    /** 记忆变更版本号（触发界面刷新） */
+    private val _memVersion = MutableStateFlow(0)
+    val memVersion: StateFlow<Int> = _memVersion
+
+    val savedControllerId: String? get() = prefs.getString("ctrl_id", null)
+    val savedControllerName: String? get() = prefs.getString("ctrl_name", null)
+    val savedBmsId: String? get() = prefs.getString("bms_id", null)
+    val savedBmsName: String? get() = prefs.getString("bms_name", null)
+
+    /** 忘记控制器 */
+    fun forgetController() {
+        prefs.edit().remove("ctrl_id").remove("ctrl_name").apply()
+        _memVersion.value++
+    }
+
+    /** 忘记 BMS */
+    fun forgetBms() {
+        prefs.edit().remove("bms_id").remove("bms_name").apply()
+        _memVersion.value++
+    }
+
     // ── 定时器 ──
 
     private val mainHandler = Handler(Looper.getMainLooper())
