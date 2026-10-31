@@ -361,10 +361,10 @@ private fun HexColorRow(label: String, currentHex: Int, onPick: (Int) -> Unit) {
 
 /** 预设色板 */
 private val PALETTE: List<Int> = listOf(
-    0xFFFF9F0A, 0xFFFFC107, 0xFFFF453A, 0xFFFF6B9D,
-    0xFF32D74B, 0xFF30D158, 0xFF00E5FF, 0xFF64D2FF,
-    0xFF0A84FF, 0xFF5E5CE6, 0xFFBF5AF2, 0xFFFFFFFF,
-    0xFF8E8E93, 0xFFA2845E, 0xFFFFD60A, 0xFF000000
+    0xFFFF9F0A.toInt(), 0xFFFFC107.toInt(), 0xFFFF453A.toInt(), 0xFFFF6B9D.toInt(),
+    0xFF32D74B.toInt(), 0xFF30D158.toInt(), 0xFF00E5FF.toInt(), 0xFF64D2FF.toInt(),
+    0xFF0A84FF.toInt(), 0xFF5E5CE6.toInt(), 0xFFBF5AF2.toInt(), 0xFFFFFFFF.toInt(),
+    0xFF8E8E93.toInt(), 0xFFA2845E.toInt(), 0xFFFFD60A.toInt(), 0xFF000000.toInt()
 )
 
 @Composable
